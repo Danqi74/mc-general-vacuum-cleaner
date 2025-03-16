@@ -1,0 +1,56 @@
+<!DOCTYPE HTML><html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial; text-align: center; margin:0px auto; padding-top: 30px;}
+      .h1{
+        text-align: center;
+        width: 100%;
+      }
+      .button {
+        padding: 10px 20px;
+        font-size: 24px;
+        text-align: center;
+        outline: none;
+        color: #fff;
+        background-color: #4d9441;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+      }  
+      .button:hover {background-color: #45843a}
+      .button:active {
+        transform: translateY(2px);
+      }
+      .buttons {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        width: max-content;
+        margin: auto;
+      }
+        .button:nth-child(1) { grid-column: 2; grid-row: 1; } /* FORWARD */
+        .button:nth-child(2) { grid-column: 2; grid-row: 3; } /* BACKWARD */
+        .button:nth-child(3) { grid-column: 3; grid-row: 2; } /* RIGHT */
+        .button:nth-child(4) { grid-column: 1; grid-row: 2; } /* LEFT */
+        .button:nth-child(5) { grid-column: 2; grid-row: 2; } /* STOP */
+  </style>
+</head>
+<body>
+  <h1>GENERAL SUCKER</h1>
+  <div class="buttons">
+    <button class="button" onClick="runCommand('forward');">FORWARD</button>
+    <button class="button" onClick="runCommand('backward');">BACKWARD</button>
+    <button class="button" onClick="runCommand('right');">RIGHT</button>
+    <button class="button" onClick="runCommand('left');">LEFT</button>
+    <button class="button" onClick="runCommand('stop');" >STOP</button>
+  </div>
+    <script>
+      function runCommand(x) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "/" + x, true);
+        xhr.send();
+      }
+    </script>
+  </body>
+</html>
