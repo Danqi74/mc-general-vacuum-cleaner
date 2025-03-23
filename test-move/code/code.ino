@@ -1,24 +1,36 @@
 #include <ESP8266WiFi.h>
 #include <ESPAsyncWebServer.h>
 
-const char *ssid = "Hnyp";
-const char *password = "12345777";
+const char *ssid = "GENERAL_SUCKER";
+const char *password = "MaxGay777";
 
 AsyncWebServer server(80);
 
 String header;
 
 //int enAB = 5;  // GPIO5 (D1)
-//int in1 = 4;   // GPIO4 (D2)
-//int in2 = 0;   // GPIO0 (D3)
-//int in3 = 2;   // GPIO2 (D4)
-//int in4 = 14;  // GPIO14 (D5)
+//int IN1 = 4;   // GPIO4 (D2)
+//int IN2 = 0;   // GPIO0 (D3)
+//int IN3 = 2;   // GPIO2 (D4)
+//int IN4 = 14;  // GPIO14 (D5)
 
-int in1 = 4;
-int in2 = 0;
+#define EN_LEFT D1
+#define EN_RIGHT D6
 
-int in3 = 2;
-int in4 = 14;
+#define IN1 D2
+#define IN2 D3
+#define IN3 D4
+#define IN4 D5
+
+#define FAN_IN D7
+#define BR_IN D8
+
+#define COLLISION_BTN D0
+
+int inPins[] = {IN1, IN2, IN3, IN4};
+
+bool fanState = false;
+bool brushState = false;
 
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
@@ -49,6 +61,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            min-width: 137px;
         }
 
         .button:hover {
@@ -97,6 +110,46 @@ const char index_html[] PROGMEM = R"rawliteral(
         }
 
         /* STOP */
+        .indicator {
+            width: 30px;
+            height: 30px;
+            background-color: red; /* Початковий колір */
+            border-radius: 50%;
+            border: 3px solid #ccc;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+            margin-top: 5px;
+        }
+        .clean-control {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            width: max-content;
+            margin: auto;
+        }
+
+        /* Контейнер для кнопок */
+        .button-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-evenly;
+            gap: 15px;
+            width: 100%;
+        }
+
+        /* Контейнер для індикаторів */
+        .indicator-container {
+            display: flex;
+            justify-content: space-evenly;
+            gap: 30px;
+            width: 100%;
+            margin-top: 10px;
+        }
+
     </style>
 </head>
 
@@ -108,6 +161,27 @@ const char index_html[] PROGMEM = R"rawliteral(
         <button class="button" onClick="runCommand('right');">RIGHT</button>
         <button class="button" onClick="runCommand('left');">LEFT</button>
         <button class="button" onClick="runCommand('stop');">STOP</button>
+        <div class="slidecontainer">
+            <input type="range" min="0" max="255" value="255" class="slider" id="MotorLeft">
+        </div>
+        <div class="slidecontainer">
+            <input type="range" min="0" max="255" value="255" class="slider" id="MotorRight">
+        </div>
+        <p><input type="number" id="valueLeft" value="255"></p>
+        <p><input type="number" id="valueRight" value="255"></p>
+    </div>
+    <div class="clean-control">
+        <div class="button-container">
+            <button class="button" onClick="runCommandSwitch('fan');">FAN</button>
+            <button class="button" onClick="runCommandSwitch('brush');">BRUSH</button>
+            <button class="button" onClick="runCommandSwitch('clean');">CLEAN</button>
+        </div>
+    
+        <div class="indicator-container">
+            <div class="indicator" id="fan-indc"></div>
+            <div class="indicator" id="brush-indc"></div>
+            <div class="indicator" id="clean-indc"></div>
+        </div>
     </div>
     <script>
         function runCommand(x) {
@@ -115,92 +189,207 @@ const char index_html[] PROGMEM = R"rawliteral(
             xhr.open("GET", "/" + x, true);
             xhr.send();
         }
-    </script>
+
+
+        let debounceTimeout;
+
+        function changeMotorSpeed(value, side) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/changeMotorSpeed?value=" + value + "&side=" + side, true);
+            xhr.send();
+        }
+
+        var sliderRight = document.getElementById("MotorRight");
+        var outputRight = document.getElementById("valueRight");
+
+        var sliderLeft = document.getElementById("MotorLeft");
+        var outputLeft = document.getElementById("valueLeft");
+
+        function handleSliderInput(slider, output, side) {
+            output.value = slider.value; // Update number input when slider changes
+            
+            clearTimeout(debounceTimeout);
+            debounceTimeout = setTimeout(function() {
+                changeMotorSpeed(slider.value, side);
+            }, 300);
+        }
+
+        function handleNumberInput(output, slider, side) {
+            if (output.value >= 0 && output.value <= 255) {
+                slider.value = output.value; // Update slider when number input changes
+                clearTimeout(debounceTimeout);
+                debounceTimeout = setTimeout(function() {
+                    changeMotorSpeed(output.value, side);
+                }, 300);
+            }
+        }
+
+        sliderRight.oninput = function() {
+            handleSliderInput(this, outputRight, "right");
+        }
+
+        sliderLeft.oninput = function() {
+            handleSliderInput(this, outputLeft, "left");
+        }
+
+        outputRight.oninput = function() {
+            handleNumberInput(this, sliderRight, "right");
+        }
+
+        outputLeft.oninput = function() {
+            handleNumberInput(this, sliderLeft, "left");
+        }
+
+
+        function runCommandSwitch(x) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/" + x, true);
+            xhr.send();
+
+            var indicator = document.getElementById(x + "-indc");
+
+            if (indicator.style.backgroundColor === "green") {
+                indicator.style.backgroundColor = "red";
+            } else {
+                indicator.style.backgroundColor = "green";
+            }
+        }
+        </script>
 </body>
 
 </html>
 )rawliteral";
 
+void setMotorState(int state[4]) {
+    for (int i = 0; i < 4; i++) {
+        digitalWrite(inPins[i], state[i]);
+    }
+}
+
 // This function lets you control spinning direction of motors
 void directionControl(String direction, int angle = 90)
 {
-    if (direction == "backward")
+    unsigned long currentMillis = millis();
+    short int type;
+    if (direction == "forward")
     {
-        digitalWrite(in1, HIGH);
-        digitalWrite(in2, LOW);
-        digitalWrite(in3, HIGH);
-        digitalWrite(in4, LOW);
+        type = 1;
+        int step[] = {LOW, HIGH, LOW, HIGH};
+        setMotorState(step);
+        // digitalWrite(IN1, LOW);
+        // digitalWrite(IN2, HIGH);
+        // digitalWrite(IN3, LOW);
+        // digitalWrite(IN4, HIGH);
     }
-    else if (direction == "forward")
+    else if (direction == "backward")
     {
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, HIGH);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, HIGH);
+        type = 2;
+        int step[] = {HIGH, LOW, HIGH, LOW};
+        setMotorState(step);
+        // digitalWrite(IN1, HIGH);
+        // digitalWrite(IN2, LOW);
+        // digitalWrite(IN3, HIGH);
+        // digitalWrite(IN4, LOW);
     }
     else if (direction == "left")
     {
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, HIGH);
-        digitalWrite(in3, HIGH);
-        digitalWrite(in4, LOW);
-        delay(angle * 12);
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, LOW);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, LOW);
+        type = 3;
+        int step[] = {LOW, HIGH, HIGH, LOW};
+        setMotorState(step);
+        // digitalWrite(IN1, LOW);
+        // digitalWrite(IN2, HIGH);
+        // digitalWrite(IN3, HIGH);
+        // digitalWrite(IN4, LOW);
+        while (millis() - currentMillis < 12 * angle) {
+            if (type != 3) {
+                return;
+            }
+            if (millis() - currentMillis > 5) {
+                delay(1);
+            }
+        }
+        int step2[] = {LOW, LOW, LOW, LOW};
+        setMotorState(step);
+        // digitalWrite(IN1, LOW);
+        // digitalWrite(IN2, LOW);
+        // digitalWrite(IN3, LOW);
+        // digitalWrite(IN4, LOW);
     }
     else if (direction == "right")
     {
-        digitalWrite(in1, HIGH);
-        digitalWrite(in2, LOW);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, HIGH);
-        delay(angle * 12);
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, LOW);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, LOW);
+        type = 4;
+        int step[] = {HIGH, LOW, LOW, HIGH};
+        setMotorState(step);
+        // digitalWrite(IN1, HIGH);
+        // digitalWrite(IN2, LOW);
+        // digitalWrite(IN3, LOW);
+        // digitalWrite(IN4, HIGH);
+        while (millis() - currentMillis < 12 * angle) {
+            if (type != 4) {
+                return;
+            }
+            if (millis() - currentMillis > 5) {
+                delay(1);
+            }
+        }
+        int step2[] = {LOW, LOW, LOW, LOW};
+        setMotorState(step);
+        // digitalWrite(IN1, LOW);
+        // digitalWrite(IN2, LOW);
+        // digitalWrite(IN3, LOW);
+        // digitalWrite(IN4, LOW);
     }
     else if (direction == "stop")
     {
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, LOW);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, LOW);
+        type = 0;
+        int step[] = {LOW, LOW, LOW, LOW};
+        setMotorState(step);
+        // digitalWrite(IN1, LOW);
+        // digitalWrite(IN2, LOW);
+        // digitalWrite(IN3, LOW);
+        // digitalWrite(IN4, LOW);
+    }
+}
+
+void speedControl(bool isLeft, u_int8_t value){
+    if (isLeft){
+        analogWrite(EN_LEFT, value);
+    } else{
+        analogWrite(EN_RIGHT, value);
     }
 }
 
 void setup(){
     //-------------------------------- Initializing pins
-    pinMode(in1, OUTPUT);
-    pinMode(in2, OUTPUT);
-    pinMode(in3, OUTPUT);
-    pinMode(in4, OUTPUT);
+    pinMode(IN1, OUTPUT);
+    pinMode(IN2, OUTPUT);
+    pinMode(IN3, OUTPUT);
+    pinMode(IN4, OUTPUT);
+    pinMode(EN_LEFT, OUTPUT);
+    pinMode(EN_RIGHT, OUTPUT);
+    pinMode(FAN_IN, OUTPUT);
+    pinMode(BR_IN, OUTPUT);
+    pinMode(COLLISION_BTN, INPUT);
 
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, LOW);
-    digitalWrite(in3, LOW);
-    digitalWrite(in4, LOW);
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, LOW);
 
+    analogWrite(EN_LEFT, 255);
+    analogWrite(EN_RIGHT, 255);
+
+    digitalWrite(FAN_IN, LOW);
+    digitalWrite(BR_IN, LOW);
 
     //--------------------------------- Connecting to WiFi
     Serial.begin(115200);
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
 
-    WiFi.begin(ssid, password);
+    WiFi.softAP(ssid, password);
 
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(500);
-        Serial.print(".");
-    }
-
-    Serial.println("");
-    Serial.println("WiFi connected.");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(IP);
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
         { request->send_P(200, "text/html", index_html); });
@@ -224,10 +413,54 @@ void setup(){
     server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request)
         { directionControl("stop");
         request->send_P(200, "text/html", "ok"); });
+
+    server.on("/changeMotorSpeed", HTTP_GET, [](AsyncWebServerRequest *request){
+        String value = request->getParam("value")->value();  // Get 'value' from URL
+        String side = request->getParam("side")->value();    // Get 'side' from URL
+
+        uint8_t speedValue = value.toInt();
+
+        if (side == "left") {
+            speedControl(true, speedValue);
+        } else if (side == "right") {
+            speedControl(false, speedValue);
+        }
+
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/fan", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (fanState){
+            fanState = false;
+            digitalWrite(FAN_IN, LOW);
+        } else{
+            fanState = true;
+            digitalWrite(FAN_IN, HIGH);
+        }
+
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/brush", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (brushState){
+            brushState = false;
+            digitalWrite(BR_IN, LOW);
+        } else{
+            brushState = true;
+            digitalWrite(BR_IN, HIGH);
+        }
+
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/clean", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send_P(200, "text/html", "ok");
+    });
+
     server.begin();
 }
 
 void loop(){
-  yield();
+    yield();
 }
 
