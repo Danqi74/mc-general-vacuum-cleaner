@@ -1,19 +1,24 @@
 #include <ESP8266WiFi.h>
 #include <ESPAsyncWebServer.h>
 
-const char *ssid = "workstation";
-const char *password = "Vzrjckjy2208@";
+const char *ssid = "Hnyp";
+const char *password = "12345777";
 
 AsyncWebServer server(80);
 
 String header;
 
-int enAB = 9;
-int in1 = 8;
-int in2 = 7;
+//int enAB = 5;  // GPIO5 (D1)
+//int in1 = 4;   // GPIO4 (D2)
+//int in2 = 0;   // GPIO0 (D3)
+//int in3 = 2;   // GPIO2 (D4)
+//int in4 = 14;  // GPIO14 (D5)
 
-int in3 = 5;
-int in4 = 4;
+int in1 = 4;
+int in2 = 0;
+
+int in3 = 2;
+int in4 = 14;
 
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
@@ -116,10 +121,58 @@ const char index_html[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
-void setup()
+// This function lets you control spinning direction of motors
+void directionControl(String direction, int angle = 90)
 {
+    if (direction == "backward")
+    {
+        digitalWrite(in1, HIGH);
+        digitalWrite(in2, LOW);
+        digitalWrite(in3, HIGH);
+        digitalWrite(in4, LOW);
+    }
+    else if (direction == "forward")
+    {
+        digitalWrite(in1, LOW);
+        digitalWrite(in2, HIGH);
+        digitalWrite(in3, LOW);
+        digitalWrite(in4, HIGH);
+    }
+    else if (direction == "left")
+    {
+        digitalWrite(in1, LOW);
+        digitalWrite(in2, HIGH);
+        digitalWrite(in3, HIGH);
+        digitalWrite(in4, LOW);
+        delay(angle * 12);
+        digitalWrite(in1, LOW);
+        digitalWrite(in2, LOW);
+        digitalWrite(in3, LOW);
+        digitalWrite(in4, LOW);
+    }
+    else if (direction == "right")
+    {
+        digitalWrite(in1, HIGH);
+        digitalWrite(in2, LOW);
+        digitalWrite(in3, LOW);
+        digitalWrite(in4, HIGH);
+        delay(angle * 12);
+        digitalWrite(in1, LOW);
+        digitalWrite(in2, LOW);
+        digitalWrite(in3, LOW);
+        digitalWrite(in4, LOW);
+    }
+    else if (direction == "stop")
+    {
+        digitalWrite(in1, LOW);
+        digitalWrite(in2, LOW);
+        digitalWrite(in3, LOW);
+        digitalWrite(in4, LOW);
+    }
+}
+
+void setup(){
     //-------------------------------- Initializing pins
-    pinMode(enAB, OUTPUT);
     pinMode(in1, OUTPUT);
     pinMode(in2, OUTPUT);
     pinMode(in3, OUTPUT);
@@ -130,7 +183,6 @@ void setup()
     digitalWrite(in3, LOW);
     digitalWrite(in4, LOW);
 
-    analogWrite(enAB, 255);
 
     //--------------------------------- Connecting to WiFi
     Serial.begin(115200);
@@ -154,70 +206,28 @@ void setup()
         { request->send_P(200, "text/html", index_html); });
 
     server.on("/forward", HTTP_GET, [](AsyncWebServerRequest *request)
-        { directionControl("forward")
+        { directionControl("forward");
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/backward", HTTP_GET, [](AsyncWebServerRequest *request)
-        { directionControl("backward")
+        { directionControl("backward");
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/right", HTTP_GET, [](AsyncWebServerRequest *request)
-        { directionControl("right")
+        { directionControl("right");
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/left", HTTP_GET, [](AsyncWebServerRequest *request)
-        { directionControl("left")
+        { directionControl("left");
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request)
-        { directionControl("stop")
+        { directionControl("stop");
         request->send_P(200, "text/html", "ok"); });
     server.begin();
 }
 
-void loop()
-{
+void loop(){
+  yield();
 }
 
-// This function lets you control spinning direction of motors
-void directionControl(String direction, int angle = 90)
-{
-    if (direction == "forward")
-    {
-        digitalWrite(in1, HIGH);
-        digitalWrite(in2, LOW);
-        digitalWrite(in3, HIGH);
-        digitalWrite(in4, LOW);
-    }
-    else if (direction == "backward")
-    {
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, HIGH);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, HIGH);
-    }
-    else if (direction == "left")
-    {
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, HIGH);
-        digitalWrite(in3, HIGH);
-        digitalWrite(in4, LOW);
-        delay(angle * 20);
-        directionControl("stop")
-    }
-    else if (direction == "right")
-    {
-        digitalWrite(in1, HIGH);
-        digitalWrite(in2, LOW);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, HIGH);
-        delay(angle * 20);
-        directionControl("stop")
-    }
-    else if (direction == "stop")
-    {
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, LOW);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, LOW);
-    }
