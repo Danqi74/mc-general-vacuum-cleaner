@@ -26,6 +26,7 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            min-width: 137px;
         }
 
         .button:hover {
@@ -74,6 +75,46 @@
         }
 
         /* STOP */
+        .indicator {
+            width: 30px;
+            height: 30px;
+            background-color: red; /* Початковий колір */
+            border-radius: 50%;
+            border: 3px solid #ccc;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+            margin-top: 5px;
+        }
+        .clean-control {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            width: max-content;
+            margin: auto;
+        }
+
+        /* Контейнер для кнопок */
+        .button-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-evenly;
+            gap: 15px;
+            width: 100%;
+        }
+
+        /* Контейнер для індикаторів */
+        .indicator-container {
+            display: flex;
+            justify-content: space-evenly;
+            gap: 30px;
+            width: 100%;
+            margin-top: 10px;
+        }
+
     </style>
 </head>
 
@@ -85,6 +126,27 @@
         <button class="button" onClick="runCommand('right');">RIGHT</button>
         <button class="button" onClick="runCommand('left');">LEFT</button>
         <button class="button" onClick="runCommand('stop');">STOP</button>
+        <div class="slidecontainer">
+            <input type="range" min="0" max="255" value="255" class="slider" id="MotorLeft">
+        </div>
+        <div class="slidecontainer">
+            <input type="range" min="0" max="255" value="255" class="slider" id="MotorRight">
+        </div>
+        <p><input type="number" id="valueLeft" value="255"></p>
+        <p><input type="number" id="valueRight" value="255"></p>
+    </div>
+    <div class="clean-control">
+        <div class="button-container">
+            <button class="button" onClick="runCommandSwitch('fan');">FAN</button>
+            <button class="button" onClick="runCommandSwitch('brush');">BRUSH</button>
+            <button class="button" onClick="runCommandSwitch('clean');">CLEAN</button>
+        </div>
+    
+        <div class="indicator-container">
+            <div class="indicator" id="fan-indc"></div>
+            <div class="indicator" id="brush-indc"></div>
+            <div class="indicator" id="clean-indc"></div>
+        </div>
     </div>
     <script>
         function runCommand(x) {
@@ -92,7 +154,75 @@
             xhr.open("GET", "/" + x, true);
             xhr.send();
         }
-    </script>
+
+
+        let debounceTimeout;
+
+        function changeMotorSpeed(value, side) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/changeMotorSpeed?value=" + value + "&side=" + side, true);
+            xhr.send();
+        }
+
+        var sliderRight = document.getElementById("MotorRight");
+        var outputRight = document.getElementById("valueRight");
+
+        var sliderLeft = document.getElementById("MotorLeft");
+        var outputLeft = document.getElementById("valueLeft");
+
+        function handleSliderInput(slider, output, side) {
+            output.value = slider.value; // Update number input when slider changes
+            
+            clearTimeout(debounceTimeout);
+            debounceTimeout = setTimeout(function() {
+                changeMotorSpeed(slider.value, side);
+            }, 300);
+        }
+
+        function handleNumberInput(output, slider, side) {
+            if (output.value >= 0 && output.value <= 255) {
+                slider.value = output.value; // Update slider when number input changes
+                clearTimeout(debounceTimeout);
+                debounceTimeout = setTimeout(function() {
+                    changeMotorSpeed(output.value, side);
+                }, 300);
+            }
+        }
+
+        sliderRight.oninput = function() {
+            handleSliderInput(this, outputRight, "right");
+        }
+
+        sliderLeft.oninput = function() {
+            handleSliderInput(this, outputLeft, "left");
+        }
+
+        outputRight.oninput = function() {
+            handleNumberInput(this, sliderRight, "right");
+        }
+
+        outputLeft.oninput = function() {
+            handleNumberInput(this, sliderLeft, "left");
+        }
+
+
+        function runCommandSwitch(x) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/" + x, true);
+            xhr.send();
+
+            var indicator = document.getElementById(x + "-indc");
+
+            // Перевіряємо поточний колір індикатора
+            if (indicator.style.backgroundColor === "green") {
+                // Якщо зелений, змінюємо на червоний
+                indicator.style.backgroundColor = "red";
+            } else {
+                // Якщо червоний або інший колір, змінюємо на зелений
+                indicator.style.backgroundColor = "green";
+            }
+        }
+        </script>
 </body>
 
 </html>
