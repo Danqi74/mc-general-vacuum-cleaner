@@ -4,6 +4,10 @@
 const char *ssid = "GENERAL_SUCKER";
 const char *password = "MaxGay777";
 
+IPAddress local_ip(192,168,1,1);
+IPAddress gateway(192,168,1,1);
+IPAddress subnet(255,255,255,0);
+
 AsyncWebServer server(80);
 
 String header;
@@ -31,6 +35,7 @@ int inPins[] = {IN1, IN2, IN3, IN4};
 
 bool fanState = false;
 bool brushState = false;
+bool cleanState = false;
 
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
@@ -386,10 +391,8 @@ void setup(){
     Serial.begin(115200);
 
     WiFi.softAP(ssid, password);
-
-    IPAddress IP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(IP);
+    WiFi.softAPConfig(local_ip, gateway, subnet);
+    delay(100);
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
         { request->send_P(200, "text/html", index_html); });
@@ -454,13 +457,47 @@ void setup(){
     });
 
     server.on("/clean", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (cleanState){
+            cleanState = false;
+        } else{
+            cleanState = true;
+        }
         request->send_P(200, "text/html", "ok");
     });
 
     server.begin();
 }
 
+void handleCollision(){
+    directionControl("stop");
+    directionControl("backward");
+    unsigned long currentMillis = millis();
+    while (millis() - currentMillis < 500) {}
+    directionControl("left", 45);
+}
+
+void read_collision_button(){
+    static bool flag_read_button = true;
+
+    if (flag_read_button)                    {
+        if (digitalRead(COLLISION_BTN) == LOW){
+        flag_read_button = false;
+        handleCollision();
+        }
+    }
+    else{
+        if (digitalRead(COLLISION_BTN) == HIGH){
+        flag_read_button = true;
+        }
+    }
+}
+
+
 void loop(){
-    yield();
+    unsigned long lastMillis = millis();
+    if (cleanState) {
+        directionControl("forward");
+        read_collision_button();
+    }
 }
 
