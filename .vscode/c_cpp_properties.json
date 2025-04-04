@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/Users/dan/Documents/Arduino/**",
+                "/Users/dan/Library/Arduino15/packages/esp8266/**"
+            ],
+            "defines": [],
+            "intelliSenseMode": "macos-clang-x64",
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "/Users/dan/Documents/Arduino",
+                    "/Users/dan/Library/Arduino15/packages/esp8266/**"
+                ]
+            }
+        }
+    ],
+    "version": 4
+}
