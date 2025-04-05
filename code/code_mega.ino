@@ -1,15 +1,14 @@
+#include <Wire.h>
+#include <MPU6050.h>
 
 #define EN_LEFT 1
 #define EN_RIGHT 2
-
 #define IN1 22
 #define IN2 24
 #define IN3 26
 #define IN4 28
-
 #define FAN_IN 48
 #define BR_IN 49
-
 #define IR_SENSOR_LEFT_IN 50
 #define IR_SENSOR_RIGHT_IN 51
 #define IR_SENSOR_LEFT_OUT 52
@@ -20,16 +19,21 @@ int inPins[] = {IN1, IN2, IN3, IN4};
 bool fanState = false;
 bool brushState = false;
 
-unsigned long collisionStartTime = 0;
-unsigned long reverseDuration = 1200;
-unsigned long turnDuration = 1000;
+MPU6050 mpu;
+float Kp = 1.0, Ki = 0.0, Kd = 0.5; 
+float previous_error = 0, integral = 0;
+
 bool collisionInProgress = false;
 bool isRightCollision = false;
+unsigned long collisionStartTime = 0;
+const unsigned long reverseDuration = 1200;
+const unsigned long turnDuration = 1000;
 
 void setMotorState(int state[4]) {
-    for (int i = 0; i < 4; i++) {
-        digitalWrite(inPins[i], state[i]);
-    }
+    digitalWrite(IN1, state[0]);
+    digitalWrite(IN2, state[1]);
+    digitalWrite(IN3, state[2]);
+    digitalWrite(IN4, state[3]);
 }
 
 void directionControl(String direction) {
@@ -54,14 +58,14 @@ void directionControl(String direction) {
 }
 
 void speedControl(bool isLeft, uint8_t value) {
-    if (isLeft) {
-        analogWrite(EN_LEFT, value);
-    } else {
-        analogWrite(EN_RIGHT, value);
-    }
+    analogWrite(isLeft ? EN_LEFT : EN_RIGHT, value);
 }
 
 void setup() {
+    Serial.begin(115200);
+    Wire.begin();
+    mpu.initialize();
+
     pinMode(IN1, OUTPUT);
     pinMode(IN2, OUTPUT);
     pinMode(IN3, OUTPUT);
@@ -75,21 +79,38 @@ void setup() {
     pinMode(IR_SENSOR_LEFT_OUT, OUTPUT);
     pinMode(IR_SENSOR_RIGHT_OUT, OUTPUT);
 
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, LOW);
-    
-    analogWrite(EN_LEFT, 255);
-    analogWrite(EN_RIGHT, 255);
-
     digitalWrite(FAN_IN, LOW);
     digitalWrite(BR_IN, LOW);
-
     digitalWrite(IR_SENSOR_LEFT_OUT, HIGH);
     digitalWrite(IR_SENSOR_RIGHT_OUT, HIGH);
 
-    Serial.begin(115200);
+    if (!mpu.testConnection()) {
+        Serial.println("Помилка підключення до MPU6050!");
+        while (1);
+    }
+    Serial.println("MPU6050 підключено!");
+}
+
+float computePID(float error) {
+    integral += error;
+    float derivative = error - previous_error;
+    float output = Kp * error + Ki * integral + Kd * derivative;
+    previous_error = error;
+    return output;
+}
+
+void adjustMotors() {
+    int16_t ax, ay, az, gx, gy, gz;
+    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    
+    float error = gx / 131.0;
+    float correction = computePID(error);
+    
+    int leftSpeed = constrain(150 - correction, 0, 255);
+    int rightSpeed = constrain(150 + correction, 0, 255);
+    
+    analogWrite(EN_LEFT, leftSpeed);
+    analogWrite(EN_RIGHT, rightSpeed);
 }
 
 void handleCollision() {
@@ -104,7 +125,6 @@ void handleCollision() {
     if (collisionInProgress) {
         if (currentMillis - collisionStartTime <= reverseDuration) {
             directionControl("backward");
-            delay(20);
         } else if (currentMillis - collisionStartTime <= reverseDuration + turnDuration) {
             if (isRightCollision) {
                 directionControl("left");
@@ -131,10 +151,11 @@ void handleInfraredSensors() {
 }
 
 void loop() {
-    // digitalWrite(BR_IN, HIGH);
-    // digitalWrite(FAN_IN, HIGH);
-    if (collisionInProgress) handleCollision();
-    handleInfraredSensors();
-    directionControl("forward");
-
+    if (collisionInProgress) {
+        handleCollision();
+    } else {
+        handleInfraredSensors();
+        adjustMotors();
+        directionControl("forward");
+    }
 }
