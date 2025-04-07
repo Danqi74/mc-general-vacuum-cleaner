@@ -1,3 +1,39 @@
+#include <ESP8266WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <SerialTransfer.h>
+
+const char *ssid = "GENERAL_SUCKER";
+const char *password = "MaxGay777";
+
+IPAddress local_ip(192,168,1,1);
+IPAddress gateway(192,168,1,1);
+IPAddress subnet(255,255,255,0);
+
+AsyncWebServer server(80);
+
+String header;
+
+SerialTransfer transfer;
+
+struct ToSend {
+    char command = ' ';
+    bool fan = false;
+    bool brush = false;
+    bool clean = false;
+} txData;
+
+struct ToReceive {
+    int16_t val1;
+    int16_t val2;
+    int16_t val3;
+    int16_t val4;
+    int16_t val5;
+    int16_t val6;
+    bool flag1;
+    bool flag2;
+} rxData;
+
+const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
 <html>
 
@@ -170,3 +206,92 @@
 </body>
 
 </html>
+)rawliteral";
+
+
+void setup(){
+    Serial.begin(115200);
+    Serial.swap(); // D7/D8
+    transfer.begin(Serial);
+
+    WiFi.softAP(ssid, password);
+    WiFi.softAPConfig(local_ip, gateway, subnet);
+    delay(100);
+
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+        { request->send_P(200, "text/html", index_html); });
+
+    server.on("/forward", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 'f';
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/backward", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 'b';
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/right", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 'r';
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/left", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 'l';
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 's';
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/fan", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (txData.fan){
+            txData.fan = false;
+        } else{
+            txData.fan = true;
+        }
+
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/brush", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (txData.brush){
+            txData.brush = false;
+        } else{
+            txData.brush = true;
+        }
+
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/clean", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (txData.clean){
+            txData.clean = false;
+        } else{
+            txData.clean = true;
+        }
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.begin();
+}
+
+void loop(){
+    transfer.sendDatum(txData);
+
+    delay(50); // коротка пауза
+
+  // Приймаємо
+if (transfer.available()) {
+    transfer.rxObj(rxData);
+    Serial.print("Прийнято: ");
+    Serial.print(rxData.val1); Serial.print(", ");
+    Serial.print(rxData.val2); Serial.print(", ");
+    Serial.print(rxData.val3); Serial.print(", ");
+    Serial.print(rxData.val4); Serial.print(", ");
+    Serial.print(rxData.val5); Serial.print(", ");
+    Serial.print(rxData.val6);
+    Serial.print(" | Флаги: ");
+    Serial.print(rxData.flag1); Serial.print(", ");
+    Serial.println(rxData.flag2);
+    Serial.println("=====");
+}
+}
+
