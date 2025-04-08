@@ -256,13 +256,7 @@ void loop() {
       directionControl('f');
     }
   } else {
-    if (rxData.command == 'f') {
-      adjustMotors();
-      directionControl('f');
-    } else {
       directionControl(rxData.command);
     }
-  }
-
   transfer.sendDatum(txData);
 }
