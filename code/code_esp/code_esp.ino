@@ -152,6 +152,9 @@ const char index_html[] PROGMEM = R"rawliteral(
             width: 100%;
             margin-top: 10px;
         }
+        canvas {
+            border: 1px solid #333;
+        }
 
     </style>
 </head>
@@ -169,7 +172,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         </div>
     </div>
     <div class="map-container">
-        <p>MAPPPP</p>
+        <canvas id="map" width="800" height="600"></canvas>
     </div>
     <div class="buttons">
         <button class="button" onClick="runCommand('forward');">FORWARD</button>
@@ -219,9 +222,9 @@ const char index_html[] PROGMEM = R"rawliteral(
             }
         }
             function fetchData() {
-        fetch("/data")
-            .then(response => response.json())
-            .then(data => {
+    fetch("/data")
+        .then(response => response.json())
+        .then(data => {
             document.getElementById("ax").textContent = data.ax;
             document.getElementById("ay").textContent = data.ay;
             document.getElementById("az").textContent = data.az;
@@ -233,8 +236,25 @@ const char index_html[] PROGMEM = R"rawliteral(
             setIndicatorColor("fan-indc", data.fan);
             setIndicatorColor("brush-indc", data.brush);
             setIndicatorColor("clean-indc", data.clean);
-            });
-        }
+
+            // 👉 Фільтрація та оновлення координат ТУТ
+            const dx = kfX.filter(data.gx / 131); // гіроскоп X
+            const dy = kfY.filter(data.gy / 131); // гіроскоп Y
+
+            posX += dx;
+            posY += dy;
+
+            // Межі
+            posX = Math.max(0, Math.min(canvas.width, posX));
+            posY = Math.max(0, Math.min(canvas.height, posY));
+
+            drawPoint(posX, posY);
+        })
+        .catch(error => {
+            console.error("Error fetching data:", error);
+        });
+      }
+
 
         function setIndicatorColor(id, value) {
             const element = document.getElementById(id);
@@ -245,6 +265,49 @@ const char index_html[] PROGMEM = R"rawliteral(
             } else {
                 element.style.backgroundColor = "red";
             }
+        }
+        
+        const canvas = document.getElementById("map");
+        const ctx = canvas.getContext("2d");
+
+        let posX = canvas.width / 2;
+        let posY = canvas.height / 2;
+
+        class KalmanFilter {
+        constructor(R, Q) {
+            this.R = R; // noise
+            this.Q = Q; // process variance
+            this.A = 1;
+            this.B = 0;
+            this.C = 1;
+            this.cov = NaN;
+            this.x = NaN;
+        }
+
+        filter(z) {
+            if (isNaN(this.x)) {
+            this.x = (1 / this.C) * z;
+            this.cov = (1 / this.C) * this.Q * (1 / this.C);
+            } else {
+            const predX = (this.A * this.x);
+            const predCov = ((this.A * this.cov) * this.A) + this.Q;
+
+            const K = predCov * this.C * (1 / ((this.C * predCov * this.C) + this.R));
+            this.x = predX + K * (z - (this.C * predX));
+            this.cov = predCov - (K * this.C * predCov);
+            }
+            return this.x;
+        }
+        }
+
+        const kfX = new KalmanFilter(0.5, 0.1);
+        const kfY = new KalmanFilter(0.5, 0.1);
+
+        function drawPoint(x, y) {
+        ctx.fillStyle = "#0077ff";
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
         }
 
         setInterval(fetchData, 500);
