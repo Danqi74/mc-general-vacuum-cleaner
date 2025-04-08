@@ -253,7 +253,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         .catch(error => {
             console.error("Error fetching data:", error);
         });
-      }
+        }
 
 
         function setIndicatorColor(id, value) {
@@ -366,6 +366,7 @@ void setup(){
             txData.brush = false;
             txData.fan = false;
         }
+        newTransferData = true;
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request)
