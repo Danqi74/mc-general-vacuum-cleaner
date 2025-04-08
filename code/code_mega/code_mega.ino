@@ -18,6 +18,8 @@
 MPU6050 mpu;
 SerialTransfer transfer;
 
+bool newReceivedData = false;
+
 float Kp = 1.0, Ki = 0.0, Kd = 500.0;
 float previous_error = 0, integral = 0;
 
@@ -46,7 +48,6 @@ struct ToSend {
   int16_t gz = 0;
   bool leftTrigg = false;
   bool rightTrigg = false;
-  char command = ' ';
 } txData;
 
 struct ToReceive {
@@ -223,24 +224,39 @@ void handleInfraredSensors() {
 }
 
 void loop() {
-  if (rxData.clean) {
-    //digitalWrite(FAN_IN, HIGH);
-    digitalWrite(BR_IN, HIGH);
+  if (transfer.available()) {
+    transfer.rxObj(rxData);
+    newReceivedData = true;
+  }
 
+  checkMPU();
+
+  if (newReceivedData) {
+    if (rxData.fan) {
+      digitalWrite(FAN_IN, HIGH);
+    } else {
+      digitalWrite(FAN_IN, LOW);
+    }
+    
+    if (rxData.brush) {
+      digitalWrite(BR_IN, HIGH);
+    } else {
+      digitalWrite(BR_IN, LOW);
+    }
+
+    newReceivedData = false;
+  }
+
+  if (rxData.clean) {
     if (collisionInProgress) {
       handleCollision();
     } else {
       handleInfraredSensors();
-      checkMPU();
       adjustMotors();
       directionControl('f');
     }
   } else {
-    digitalWrite(FAN_IN, LOW);
-    digitalWrite(BR_IN, LOW);
-
     if (rxData.command == 'f') {
-      checkMPU();
       adjustMotors();
       directionControl('f');
     } else {
@@ -248,11 +264,5 @@ void loop() {
     }
   }
 
-  if (transfer.available()) {
-    transfer.rxObj(rxData);
-    txData.command = rxData.command;
-  }
-
-  checkMPU();
   transfer.sendDatum(txData);
 }
