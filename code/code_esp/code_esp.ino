@@ -15,6 +15,8 @@ String header;
 
 SerialTransfer transfer;
 
+bool newTransferData = false;
+
 struct ToSend {
     char command = ' ';
     bool fan = false;
@@ -23,14 +25,14 @@ struct ToSend {
 } txData;
 
 struct ToReceive {
-    int16_t val1;
-    int16_t val2;
-    int16_t val3;
-    int16_t val4;
-    int16_t val5;
-    int16_t val6;
-    bool flag1;
-    bool flag2;
+    int16_t ax;
+    int16_t ay;
+    int16_t az;
+    int16_t gx;
+    int16_t gy;
+    int16_t gz;
+    bool leftTrigg;
+    bool rightTrigg;
 } rxData;
 
 const char index_html[] PROGMEM = R"rawliteral(
@@ -182,6 +184,20 @@ const char index_html[] PROGMEM = R"rawliteral(
             <button class="button" onClick="runCommandSwitch('brush');" id="brush-indc" style="background-color: red;">BRUSH</button>
         </div>
     </div>
+    <br>
+    <h2>DEV data</h2>
+    <br>
+    <h2>Accelerometer</h2>
+    X: <span id="ax">---</span><br>
+    Y: <span id="ay">---</span><br>
+    Z: <span id="az">---</span><br><br>
+    <h2>Gyroscope</h2>
+    X: <span id="gx">---</span><br>
+    Y: <span id="gy">---</span><br>
+    Z: <span id="gz">---</span><br>
+    <h2>Triggers</h2>
+    Left: <span id="leftTrigg">---</span><br>
+    Right: <span id="rightTrigg">---</span><br>
     <script>
         function runCommand(x) {
             var xhr = new XMLHttpRequest();
@@ -202,16 +218,45 @@ const char index_html[] PROGMEM = R"rawliteral(
                 indicator.style.backgroundColor = "green";
             }
         }
+            function fetchData() {
+        fetch("/data")
+            .then(response => response.json())
+            .then(data => {
+            document.getElementById("ax").textContent = data.ax;
+            document.getElementById("ay").textContent = data.ay;
+            document.getElementById("az").textContent = data.az;
+            document.getElementById("gx").textContent = data.gx;
+            document.getElementById("gy").textContent = data.gy;
+            document.getElementById("gz").textContent = data.gz;
+            document.getElementById("leftTrigg").textContent = data.leftTrigg;
+            document.getElementById("rightTrigg").textContent = data.rightTrigg;
+            setIndicatorColor("fan-indc", data.fan);
+            setIndicatorColor("brush-indc", data.brush);
+            setIndicatorColor("clean-indc", data.clean);
+            });
+        }
+
+        function setIndicatorColor(id, value) {
+            const element = document.getElementById(id);
+            if (!element) return;
+
+            if (value === 1 || value === true) {
+                element.style.backgroundColor = "green";
+            } else {
+                element.style.backgroundColor = "red";
+            }
+        }
+
+        setInterval(fetchData, 500);
+        window.onload = fetchData;
         </script>
 </body>
 
 </html>
 )rawliteral";
 
-
 void setup(){
     Serial.begin(115200);
-    Serial.swap(); // D7/D8
     transfer.begin(Serial);
 
     WiFi.softAP(ssid, password);
@@ -223,22 +268,51 @@ void setup(){
 
     server.on("/forward", HTTP_GET, [](AsyncWebServerRequest *request)
         { txData.command = 'f';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/backward", HTTP_GET, [](AsyncWebServerRequest *request)
         { txData.command = 'b';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/right", HTTP_GET, [](AsyncWebServerRequest *request)
         { txData.command = 'r';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/left", HTTP_GET, [](AsyncWebServerRequest *request)
         { txData.command = 'l';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request)
         { txData.command = 's';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
         request->send_P(200, "text/html", "ok"); });
 
     server.on("/fan", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -247,6 +321,7 @@ void setup(){
         } else{
             txData.fan = true;
         }
+        newTransferData = true;
 
         request->send_P(200, "text/html", "ok");
     });
@@ -257,6 +332,7 @@ void setup(){
         } else{
             txData.brush = true;
         }
+        newTransferData = true;
 
         request->send_P(200, "text/html", "ok");
     });
@@ -264,34 +340,48 @@ void setup(){
     server.on("/clean", HTTP_GET, [](AsyncWebServerRequest *request){
         if (txData.clean){
             txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
         } else{
             txData.clean = true;
+            txData.brush = true;
+            txData.fan = true;
+            txData.command = 's';
         }
+        newTransferData = true;
         request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request){
+        String json = "{";
+        json += "\"ax\":" + String(rxData.ax / 1638.4, 2) + ",";
+        json += "\"ay\":" + String(rxData.ay / 1638.4, 2) + ",";
+        json += "\"az\":" + String(rxData.az / 1638.4, 2) + ",";
+        json += "\"gx\":" + String(rxData.gx / 1638.4, 2) + ",";
+        json += "\"gy\":" + String(rxData.gy / 131.0, 2) + ",";
+        json += "\"gz\":" + String(rxData.gz / 131.0, 2) + ",";
+        json += "\"leftTrigg\":" + String(rxData.leftTrigg, 2) + ",";
+        json += "\"rightTrigg\":" + String(rxData.rightTrigg, 2) + ",";
+        json += "\"clean\":" + String(txData.clean, 2) + ",";
+        json += "\"brush\":" + String(txData.brush, 2) + ",";
+        json += "\"fan\":" + String(txData.fan, 2);
+        json += "}";
+        request->send(200, "application/json", json);
     });
 
     server.begin();
 }
 
 void loop(){
-    transfer.sendDatum(txData);
+    if (newTransferData) {
+        transfer.sendDatum(txData);
+        newTransferData = false;
+    }
 
-    delay(50); // коротка пауза
+    delay(50);
 
-  // Приймаємо
-if (transfer.available()) {
-    transfer.rxObj(rxData);
-    Serial.print("Прийнято: ");
-    Serial.print(rxData.val1); Serial.print(", ");
-    Serial.print(rxData.val2); Serial.print(", ");
-    Serial.print(rxData.val3); Serial.print(", ");
-    Serial.print(rxData.val4); Serial.print(", ");
-    Serial.print(rxData.val5); Serial.print(", ");
-    Serial.print(rxData.val6);
-    Serial.print(" | Флаги: ");
-    Serial.print(rxData.flag1); Serial.print(", ");
-    Serial.println(rxData.flag2);
-    Serial.println("=====");
-}
+    if (transfer.available()) {
+        transfer.rxObj(rxData);
+    }
 }
 
