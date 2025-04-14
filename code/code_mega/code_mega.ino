@@ -20,7 +20,7 @@ SerialTransfer transfer;
 
 bool newReceivedData = false;
 
-float Kp = 1.0, Ki = 0.0, Kd = 500.0;
+float Kp = 11.0, Ki = 2.0, Kd = 1.0;
 float previous_error = 0, integral = 0;
 
 bool collisionInProgress = false;
@@ -38,7 +38,6 @@ float smoothGx = 0, smoothGy = 0, smoothGz = 0;
 
 const float alpha = 0.05;  // Коефіцієнт згладжування (0..1, де ближче до 0 — більше згладжування)
 
-
 struct ToSend {
   int16_t ax = 0;
   int16_t ay = 0;
@@ -48,6 +47,7 @@ struct ToSend {
   int16_t gz = 0;
   bool leftTrigg = false;
   bool rightTrigg = false;
+  float gzBias = 0.0;
 } txData;
 
 struct ToReceive {
@@ -89,6 +89,17 @@ void speedControl(bool isLeft, uint8_t value) {
   analogWrite(isLeft ? EN_LEFT : EN_RIGHT, value);
 }
 
+void calculateGyroBias(){
+  long sum = 0;
+  const int samples = 200;
+  for (int i = 0; i < samples; i++) {
+    int16_t ax, ay, az, gx, gy, gz;
+    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    sum += gz;
+  }
+  txData.gzBias = sum / (float)samples;
+}
+
 void setup() {
   Serial1.begin(115200);
   Serial.begin(9600);
@@ -117,15 +128,7 @@ void setup() {
   // analogWrite(EN_LEFT, 250);
   // analogWrite(EN_RIGHT, 250);
 
-  long sum = 0;
-  const int samples = 100;
-  for (int i = 0; i < samples; i++) {
-    int16_t ax, ay, az, gx, gy, gz;
-    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-    sum += gz;
-    delay(5);  // невелика пауза між замірами
-  }
-  gyroBias = sum / (float)samples;
+  
 
   if (!mpu.testConnection()) {
     Serial.println("Помилка підключення до MPU6050!");
@@ -150,7 +153,7 @@ void updateYaw() {
   lastUpdate = now;
 
   int16_t gz = txData.gz;
-  yaw += (gz - gyroBias / 131.0) * dt;
+  yaw += (gz - txData.gzBias / 131.0) * dt;
 }
 
 void adjustMotors() {
@@ -257,6 +260,9 @@ void loop() {
     }
   } else {
       directionControl(rxData.command);
+      if (rxData.command == 's'){
+        calculateGyroBias();
+      }
     }
   transfer.sendDatum(txData);
 }
