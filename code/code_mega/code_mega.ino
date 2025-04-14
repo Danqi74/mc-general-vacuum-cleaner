@@ -91,7 +91,7 @@ void speedControl(bool isLeft, uint8_t value) {
 
 void calculateGyroBias(){
   long sum = 0;
-  const int samples = 200;
+  const int samples = 20;
   for (int i = 0; i < samples; i++) {
     int16_t ax, ay, az, gx, gy, gz;
     mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
@@ -128,7 +128,7 @@ void setup() {
   // analogWrite(EN_LEFT, 250);
   // analogWrite(EN_RIGHT, 250);
 
-  
+  calculateGyroBias();
 
   if (!mpu.testConnection()) {
     Serial.println("Помилка підключення до MPU6050!");
