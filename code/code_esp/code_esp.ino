@@ -42,7 +42,7 @@ struct ToReceive {
     int16_t gz;
     bool leftTrigg;
     bool rightTrigg;
-    int16_t gzBias;
+    float gzBias;
 } rxData;
 
 const char index_html[] PROGMEM = R"rawliteral(
@@ -220,6 +220,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     X: <span id="gx">---</span><br>
     Y: <span id="gy">---</span><br>
     Z: <span id="gz">---</span><br>
+    Z: <span id="gzBias">---</span><br>
     <h2>Triggers</h2>
     Left: <span id="leftTrigg">---</span><br>
     Right: <span id="rightTrigg">---</span><br>
@@ -257,6 +258,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById("gx").textContent = data.gx;
             document.getElementById("gy").textContent = data.gy;
             document.getElementById("gz").textContent = data.gz;
+            document.getElementById("gzBias").textContent = data.gzBias;
             document.getElementById("leftTrigg").textContent = data.leftTrigg;
             document.getElementById("rightTrigg").textContent = data.rightTrigg;
             setIndicatorColor("fan-indc", data.fan);
@@ -400,6 +402,7 @@ void setup(){
         json += "\"clean\":" + String(txData.clean, 2) + ",";
         json += "\"brush\":" + String(txData.brush, 2) + ",";
         json += "\"fan\":" + String(txData.fan, 2) + ",";
+        json += "\"gzBias\":" + String(rxData.gzBias, 2) + ",";
         json += "\"angle\":" + String(currentAngle, 2);
         json += "}";
         request->send(200, "application/json", json);
