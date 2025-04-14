@@ -13,6 +13,15 @@ AsyncWebServer server(80);
 
 String header;
 
+float currentAngle = 0.0;
+unsigned long currentTimeStamp = 0;
+unsigned long previousTimeStamp = 0;
+int16_t rotationAxle;
+float rotationSpeed;
+const int FILTER_SIZE = 10;
+float rotationSpeedBuffer[FILTER_SIZE] = {0};
+int filterIndex = 0;
+
 SerialTransfer transfer;
 
 bool newTransferData = false;
@@ -33,6 +42,7 @@ struct ToReceive {
     int16_t gz;
     bool leftTrigg;
     bool rightTrigg;
+    int16_t gzBias;
 } rxData;
 
 const char index_html[] PROGMEM = R"rawliteral(
@@ -156,6 +166,17 @@ const char index_html[] PROGMEM = R"rawliteral(
             border: 1px solid #333;
         }
 
+        .arrow {
+            width: 4px;
+            height: 90px;
+            background: red;
+            position: absolute;
+            top: 500px;
+            left: 50%;
+            transform-origin: bottom center;
+            transform: rotate(0deg);
+        }
+
     </style>
 </head>
 
@@ -172,6 +193,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         </div>
     </div>
     <div class="map-container">
+        <div class="arrow" id="arrow"></div>
         <canvas id="map" width="800" height="600"></canvas>
     </div>
     <div class="buttons">
@@ -209,9 +231,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         }
 
         function runCommandSwitch(x) {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", "/" + x, true);
-            xhr.send();
+            runCommand(x);
 
             var indicator = document.getElementById(x + "-indc");
 
@@ -221,6 +241,12 @@ const char index_html[] PROGMEM = R"rawliteral(
                 indicator.style.backgroundColor = "green";
             }
         }
+
+        function updateArrow(deg) {
+            const arrow = document.getElementById('arrow');
+            arrow.style.transform = `rotate(${deg}deg)`;
+        }
+
             function fetchData() {
     fetch("/data")
         .then(response => response.json())
@@ -236,19 +262,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             setIndicatorColor("fan-indc", data.fan);
             setIndicatorColor("brush-indc", data.brush);
             setIndicatorColor("clean-indc", data.clean);
-
-            // 👉 Фільтрація та оновлення координат ТУТ
-            const dx = kfX.filter(data.gx / 131); // гіроскоп X
-            const dy = kfY.filter(data.gy / 131); // гіроскоп Y
-
-            posX += dx;
-            posY += dy;
-
-            // Межі
-            posX = Math.max(0, Math.min(canvas.width, posX));
-            posY = Math.max(0, Math.min(canvas.height, posY));
-
-            drawPoint(posX, posY);
+            updateArrow(data.angle);
         })
         .catch(error => {
             console.error("Error fetching data:", error);
@@ -266,56 +280,13 @@ const char index_html[] PROGMEM = R"rawliteral(
                 element.style.backgroundColor = "red";
             }
         }
-        
-        const canvas = document.getElementById("map");
-        const ctx = canvas.getContext("2d");
-
-        let posX = canvas.width / 2;
-        let posY = canvas.height / 2;
-
-        class KalmanFilter {
-        constructor(R, Q) {
-            this.R = R; // noise
-            this.Q = Q; // process variance
-            this.A = 1;
-            this.B = 0;
-            this.C = 1;
-            this.cov = NaN;
-            this.x = NaN;
-        }
-
-        filter(z) {
-            if (isNaN(this.x)) {
-            this.x = (1 / this.C) * z;
-            this.cov = (1 / this.C) * this.Q * (1 / this.C);
-            } else {
-            const predX = (this.A * this.x);
-            const predCov = ((this.A * this.cov) * this.A) + this.Q;
-
-            const K = predCov * this.C * (1 / ((this.C * predCov * this.C) + this.R));
-            this.x = predX + K * (z - (this.C * predX));
-            this.cov = predCov - (K * this.C * predCov);
-            }
-            return this.x;
-        }
-        }
-
-        const kfX = new KalmanFilter(0.5, 0.1);
-        const kfY = new KalmanFilter(0.5, 0.1);
-
-        function drawPoint(x, y) {
-        ctx.fillStyle = "#0077ff";
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.fill();
-        }
 
         setInterval(fetchData, 500);
         window.onload = fetchData;
         </script>
 </body>
 
-</html>
+</html></html>
 )rawliteral";
 
 void setup(){
@@ -428,12 +399,48 @@ void setup(){
         json += "\"rightTrigg\":" + String(rxData.rightTrigg, 2) + ",";
         json += "\"clean\":" + String(txData.clean, 2) + ",";
         json += "\"brush\":" + String(txData.brush, 2) + ",";
-        json += "\"fan\":" + String(txData.fan, 2);
+        json += "\"fan\":" + String(txData.fan, 2) + ",";
+        json += "\"angle\":" + String(currentAngle, 2);
         json += "}";
         request->send(200, "application/json", json);
     });
 
     server.begin();
+}
+
+// void calculateAngle(){
+//     currentTimeStamp = millis();
+//     float dt = (currentTimeStamp - previousTimeStamp) / 1000.0;
+//     rotationAxle = rxData.gz;
+//     rotationSpeed = rotationAxle / 131.0;
+//     currentAngle -= rotationSpeed * dt;
+//     previousTimeStamp = currentTimeStamp;
+// }
+
+void calculateAngle() {
+    currentTimeStamp = millis();
+    float dt = (currentTimeStamp - previousTimeStamp) / 1000.0;
+
+    rotationAxle = rxData.gz;
+    float rawRotationSpeed = (rotationAxle - rxData.gzBias) / 131.0;
+
+    // Додаємо нове значення до буфера
+    rotationSpeedBuffer[filterIndex++] = rawRotationSpeed;
+    if (filterIndex >= FILTER_SIZE) filterIndex = 0;
+
+    // Обчислюємо середнє значення (фільтр ковзного середнього)
+    float filteredRotationSpeed = 0;
+    for (int i = 0; i < FILTER_SIZE; i++) {
+        filteredRotationSpeed += rotationSpeedBuffer[i];
+    }
+    filteredRotationSpeed /= FILTER_SIZE;
+
+    // Інтегруємо фільтровану швидкість
+    if (abs(rotationSpeed) > 0.2) {
+        currentAngle -= rotationSpeed * dt;
+    }
+
+    previousTimeStamp = currentTimeStamp;
 }
 
 void loop(){
@@ -442,10 +449,12 @@ void loop(){
         newTransferData = false;
     }
 
-    delay(50);
+    // delay(50);
 
     if (transfer.available()) {
         transfer.rxObj(rxData);
     }
+
+    calculateAngle();
 }
 
