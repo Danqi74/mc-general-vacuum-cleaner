@@ -1,3 +1,51 @@
+#include <ESP8266WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <SerialTransfer.h>
+
+const char *ssid = "GENERAL_SUCKER";
+const char *password = "MaxGay777";
+
+IPAddress local_ip(192,168,1,1);
+IPAddress gateway(192,168,1,1);
+IPAddress subnet(255,255,255,0);
+
+AsyncWebServer server(80);
+
+String header;
+
+float currentAngle = 0.0;
+unsigned long currentTimeStamp = 0;
+unsigned long previousTimeStamp = 0;
+int16_t rotationAxle;
+float rotationSpeed;
+const int FILTER_SIZE = 10;
+float rotationSpeedBuffer[FILTER_SIZE] = {0};
+int filterIndex = 0;
+
+SerialTransfer transfer;
+
+bool newTransferData = false;
+
+struct ToSend {
+    char command = ' ';
+    bool fan = false;
+    bool brush = false;
+    bool clean = false;
+} txData;
+
+struct ToReceive {
+    int16_t ax;
+    int16_t ay;
+    int16_t az;
+    int16_t gx;
+    int16_t gy;
+    int16_t gz;
+    bool leftTrigg;
+    bool rightTrigg;
+    float gzBias;
+} rxData;
+
+const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
 <html>
 
@@ -172,6 +220,8 @@
     X: <span id="gx">---</span><br>
     Y: <span id="gy">---</span><br>
     Z: <span id="gz">---</span><br>
+    Bias: <span id="gzBias">---</span><br>
+    Angle: <span id="angle">---</span><br>
     <h2>Triggers</h2>
     Left: <span id="leftTrigg">---</span><br>
     Right: <span id="rightTrigg">---</span><br>
@@ -209,6 +259,8 @@
             document.getElementById("gx").textContent = data.gx;
             document.getElementById("gy").textContent = data.gy;
             document.getElementById("gz").textContent = data.gz;
+            document.getElementById("gzBias").textContent = data.gzBias;
+            document.getElementById("angle").textContent = data.angle;
             document.getElementById("leftTrigg").textContent = data.leftTrigg;
             document.getElementById("rightTrigg").textContent = data.rightTrigg;
             setIndicatorColor("fan-indc", data.fan);
@@ -239,3 +291,173 @@
 </body>
 
 </html></html>
+)rawliteral";
+
+void setup(){
+    Serial.begin(115200);
+    transfer.begin(Serial);
+
+    WiFi.softAP(ssid, password);
+    WiFi.softAPConfig(local_ip, gateway, subnet);
+    delay(100);
+
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+        { request->send_P(200, "text/html", index_html); });
+
+    server.on("/forward", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 'f';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/backward", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 'b';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/right", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 'r';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/left", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 'l';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request)
+        { txData.command = 's';
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        }
+        newTransferData = true;
+        request->send_P(200, "text/html", "ok"); });
+
+    server.on("/fan", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (txData.fan){
+            txData.fan = false;
+        } else{
+            txData.fan = true;
+        }
+        newTransferData = true;
+
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/brush", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (txData.brush){
+            txData.brush = false;
+        } else{
+            txData.brush = true;
+        }
+        newTransferData = true;
+
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/clean", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (txData.clean){
+            txData.clean = false;
+            txData.brush = false;
+            txData.fan = false;
+        } else{
+            txData.clean = true;
+            txData.brush = true;
+            txData.fan = true;
+            txData.command = 's';
+        }
+        newTransferData = true;
+        request->send_P(200, "text/html", "ok");
+    });
+
+    server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request){
+        String json = "{";
+        json += "\"ax\":" + String(rxData.ax / 1638.4, 2) + ",";
+        json += "\"ay\":" + String(rxData.ay / 1638.4, 2) + ",";
+        json += "\"az\":" + String(rxData.az / 1638.4, 2) + ",";
+        json += "\"gx\":" + String(rxData.gx / 1638.4, 2) + ",";
+        json += "\"gy\":" + String(rxData.gy / 131.0, 2) + ",";
+        json += "\"gz\":" + String(rxData.gz / 131.0, 2) + ",";
+        json += "\"leftTrigg\":" + String(rxData.leftTrigg, 2) + ",";
+        json += "\"rightTrigg\":" + String(rxData.rightTrigg, 2) + ",";
+        json += "\"clean\":" + String(txData.clean, 2) + ",";
+        json += "\"brush\":" + String(txData.brush, 2) + ",";
+        json += "\"fan\":" + String(txData.fan, 2) + ",";
+        json += "\"gzBias\":" + String(rxData.gzBias, 2) + ",";
+        json += "\"angle\":" + String(currentAngle, 2);
+        json += "}";
+        request->send(200, "application/json", json);
+    });
+
+    server.begin();
+}
+
+// void calculateAngle(){
+//     currentTimeStamp = millis();
+//     float dt = (currentTimeStamp - previousTimeStamp) / 1000.0;
+//     rotationAxle = rxData.gz;
+//     rotationSpeed = rotationAxle / 131.0;
+//     currentAngle -= rotationSpeed * dt;
+//     previousTimeStamp = currentTimeStamp;
+// }
+
+void calculateAngle() {
+    currentTimeStamp = millis();
+    float dt = (currentTimeStamp - previousTimeStamp) / 1000.0;
+
+    rotationAxle = rxData.gz;
+    float rawRotationSpeed = (rotationAxle - rxData.gzBias) / 131.0;
+
+    // Додаємо нове значення до буфера
+    rotationSpeedBuffer[filterIndex++] = rawRotationSpeed;
+    if (filterIndex >= FILTER_SIZE) filterIndex = 0;
+
+    // Обчислюємо середнє значення (фільтр ковзного середнього)
+    float filteredRotationSpeed = 0;
+    for (int i = 0; i < FILTER_SIZE; i++) {
+        filteredRotationSpeed += rotationSpeedBuffer[i];
+    }
+    filteredRotationSpeed /= FILTER_SIZE;
+
+    // Інтегруємо фільтровану швидкість
+    currentAngle -= rawRotationSpeed * dt;
+
+    previousTimeStamp = currentTimeStamp;
+}
+
+void loop(){
+    if (newTransferData) {
+        transfer.sendDatum(txData);
+        newTransferData = false;
+    }
+
+    // delay(50);
+
+    if (transfer.available()) {
+        transfer.rxObj(rxData);
+    }
+
+    calculateAngle();
+}
+
