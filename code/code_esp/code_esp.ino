@@ -220,7 +220,8 @@ const char index_html[] PROGMEM = R"rawliteral(
     X: <span id="gx">---</span><br>
     Y: <span id="gy">---</span><br>
     Z: <span id="gz">---</span><br>
-    Z: <span id="gzBias">---</span><br>
+    Bias: <span id="gzBias">---</span><br>
+    Angle: <span id="angle">---</span><br>
     <h2>Triggers</h2>
     Left: <span id="leftTrigg">---</span><br>
     Right: <span id="rightTrigg">---</span><br>
@@ -259,6 +260,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById("gy").textContent = data.gy;
             document.getElementById("gz").textContent = data.gz;
             document.getElementById("gzBias").textContent = data.gzBias;
+            document.getElementById("angle").textContent = data.angle;
             document.getElementById("leftTrigg").textContent = data.leftTrigg;
             document.getElementById("rightTrigg").textContent = data.rightTrigg;
             setIndicatorColor("fan-indc", data.fan);
@@ -439,9 +441,7 @@ void calculateAngle() {
     filteredRotationSpeed /= FILTER_SIZE;
 
     // Інтегруємо фільтровану швидкість
-    if (abs(rotationSpeed) > 0.2) {
-        currentAngle -= rotationSpeed * dt;
-    }
+    currentAngle -= rawRotationSpeed * dt;
 
     previousTimeStamp = currentTimeStamp;
 }
